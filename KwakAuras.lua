@@ -22,9 +22,7 @@ function KwakTools:FindSpiritTapFrame()
         return nil
     end
 
-    for i = 1, BuffIconCooldownViewer:GetNumChildren() do
-        local frame = select(i, BuffIconCooldownViewer:GetChildren())
-
+    for _, frame in ipairs({BuffIconCooldownViewer:GetChildren()}) do
         if frame
             and frame.GetCooldownID
             and frame:GetCooldownID() == SPIRIT_TAP_COOLDOWN_ID
@@ -77,7 +75,7 @@ function KwakTools:HandleSpiritTap(_active)
     --self:Print("SPIRIT TAP ACTIVE")
 
     if self.db.profile.spiritTapEmote then
-        local emotes = { "cheer", "train", "charge" }
+        local emotes = { "cheer", "train", "charge", "attacktarget", "openfire" }
         DoEmote(emotes[math.random(#emotes)], "none")
     end
 end

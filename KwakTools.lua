@@ -54,24 +54,22 @@ function KwakTools:OnPartyKill(event, attackerGUID, targetGUID)
         return
     end
 
-    if attackerGUID == playerUID then
-        local unitType, guidType, serverID, instanceID, zoneID, npcID, spawnID = strsplit("-", targetGUID)
-        --self:Print(targetGUID)
-
-        if killTimer and unitType:lower() == "player" then
-            killTimer:Cancel()
-        else
-            return
-        end
-
-        killsMade = killsMade + 1
-
-        self:Print(killsMade)
-
-        killTimer = C_Timer.NewTimer(60, function()
-            self:KillTimeOut()
-        end)
+    if attackerGUID ~= playerUID then
+        return
     end
+
+    local unitType = strsplit("-", targetGUID)
+
+    if not (killTimer and unitType:lower() == "player") then
+        return
+    end
+
+    killsMade = killsMade + 1
+
+    self:Print(killsMade)
+
+    killTimer:Cancel()
+    killTimer = C_Timer.NewTimer(60, self.KillTimeOut)
 end
 
 function KwakTools:OnPlayerTargetDied(...)
@@ -232,8 +230,6 @@ function KwakTools:GetFullName(_target)
     if _lastName then
         _targetName = _firstName .. " " .. _lastName
     end
-
-    self:Print(_targetName)
 
     return _targetName
 end
