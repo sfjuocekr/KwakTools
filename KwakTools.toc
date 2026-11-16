@@ -1,0 +1,13 @@
+## Interface: 16001
+## Title: KwakTools
+## Notes: Kwakzalver's useless additions
+## Author: sfjuocekr
+## Version: 0.0.1
+## SavedVariables: KwakToolsDB
+
+embeds.xml
+
+KwakDump.lua
+KwakTools.lua
+KwakAuras.lua
+KwakUI.lua
