@@ -1,4 +1,4 @@
-KwakTools = LibStub("AceAddon-3.0"):NewAddon(
+local KwakTools = LibStub("AceAddon-3.0"):NewAddon(
     "KwakTools",
     "AceConsole-3.0",
     "AceEvent-3.0"
@@ -10,13 +10,63 @@ local defaults = {
         spiritTapEmote = false,
         manaLowEmote = false,
         levelUpScreenshot = false,
+        killStreakSound = false,
     },
 }
 
 
-local killsMade = 0
-local killTimer = nil
 local playerUID = UnitGUID("player")
+
+local UNREAL_SOUND_PATH = "Interface/AddOns/KwakTools/Sounds/Unreal/%s"
+
+-- Ordered from lowest to highest kill streak, matching the WoW announcer thresholds.
+local STREAK_SOUNDS = {
+    { kills = 5,  sound = "killingspree.ogg" },
+    { kills = 10, sound = "dominating.ogg" },
+    { kills = 15, sound = "rampage.ogg" },
+    { kills = 20, sound = "unstoppable.ogg" },
+    { kills = 25, sound = "godlike.ogg" },
+    { kills = 30, sound = "massacre.ogg" },
+}
+
+-- Fine-tier combos (2nd, 3rd, ...) announced on a short, separate window.
+local STREAK_COMBO_SOUNDS = {
+    { kills = 2, sound = "doublekill.ogg" },
+    { kills = 3, sound = "multikill.ogg" },
+    { kills = 4, sound = "megakill.ogg" },
+    { kills = 5, sound = "ultrakill.ogg" },
+    { kills = 6, sound = "monsterkill.ogg" },
+}
+
+
+local function GetStreakTier(_count)
+    local tier
+
+    for _, entry in ipairs(STREAK_SOUNDS) do
+        if _count >= entry.kills then
+            tier = entry
+        else
+            break
+        end
+    end
+
+    return tier
+end
+
+
+local function GetStreakComboTier(_count)
+    local tier
+
+    for _, entry in ipairs(STREAK_COMBO_SOUNDS) do
+        if _count >= entry.kills then
+            tier = entry
+        else
+            break
+        end
+    end
+
+    return tier
+end
 
 
 function KwakTools:OnInitialize()
@@ -33,7 +83,7 @@ function KwakTools:OnInitialize()
     self:Print("OnInitialize")
 
     self:RegisterEvent("PARTY_KILL", "OnPartyKill")
-    --self:RegisterEvent("PLAYER_TARGET_DIED", "OnPlayerTargetDied")
+    self:RegisterEvent("PLAYER_DEAD", "OnPartyKill")
 
 --    hooksecurefunc("JumpOrAscendStart", function() print("Jump key pressed") end)
 end
@@ -47,8 +97,32 @@ function KwakTools:PrintArgs(...)
 end
 
 
+local STREAK_RESET_SECONDS = 120
+local STREAK_COMBO_SECONDS = 30
+
+local killStreak = 0
+local killStreakTimer = nil
+local killStreakLastSound = nil
+
+local killCombo = 0
+local killComboTimer = nil
+local killComboLastSound = nil
+
+-- Queue of kill-streak sounds awaiting playback, so they play one after
+-- another instead of firing on top of each other (Unreal Tournament style).
+local killSoundQueue = {}
+local killSoundTicker = nil
+local killSoundHandle = nil
+local KILL_SOUND_CHECK_SECONDS = 0.1
+
+
 function KwakTools:OnPartyKill(event, attackerGUID, targetGUID)
     --self:Print("OnPartyKill")
+
+    if event == "PLAYER_DEAD" then
+        self:ClearKillStreak()
+        return
+    end
 
     if issecretvalue(attackerGUID) or issecretvalue(targetGUID) then
         return
@@ -60,29 +134,107 @@ function KwakTools:OnPartyKill(event, attackerGUID, targetGUID)
 
     local unitType = strsplit("-", targetGUID)
 
-    if not (killTimer and unitType:lower() == "player") then
+    if not unitType or unitType:lower() ~= "creature" then
         return
     end
 
-    killsMade = killsMade + 1
+    killStreak = (killStreak or 0) + 1
+    killCombo = (killCombo or 0) + 1
 
-    self:Print(killsMade)
+    if self.db.profile.killStreakSound then
+        local tier = GetStreakTier(killStreak)
 
-    killTimer:Cancel()
-    killTimer = C_Timer.NewTimer(60, self.KillTimeOut)
+        if tier and tier.sound ~= killStreakLastSound then
+            killStreakLastSound = tier.sound
+            self:EnqueueKillSound(tier.sound)
+        end
+
+        local combo = GetStreakComboTier(killCombo)
+
+        if combo and combo.sound ~= killComboLastSound then
+            killComboLastSound = combo.sound
+            self:EnqueueKillSound(combo.sound)
+        end
+    end
+
+    if killStreakTimer then
+        killStreakTimer:Cancel()
+    end
+
+    killStreakTimer = C_Timer.NewTimer(
+        STREAK_RESET_SECONDS,
+        self.ClearKillStreak
+    )
+
+    if killComboTimer then
+        killComboTimer:Cancel()
+    end
+
+    killComboTimer = C_Timer.NewTimer(
+        STREAK_COMBO_SECONDS,
+        self.ClearKillCombo
+    )
 end
 
-function KwakTools:OnPlayerTargetDied(...)
-    self:Print("OnPlayerTargetDied")
 
-    self:PrintArgs(...)
+function KwakTools:EnqueueKillSound(_sound)
+    if not _sound then
+        return
+    end
+
+    table.insert(killSoundQueue, _sound)
+
+    if not killSoundTicker then
+        killSoundTicker = C_Timer.NewTicker(
+            KILL_SOUND_CHECK_SECONDS,
+            self.TickKillSoundQueue
+        )
+    end
 end
 
-function KwakTools:KillTimeOut()
-    self:Print("KillTimeOut")
 
-    killsMade = 0
-    killTimer = nil
+function KwakTools:TickKillSoundQueue()
+    if #killSoundQueue == 0 then
+        killSoundHandle = nil
+        if killSoundTicker then
+            killSoundTicker:Cancel()
+            killSoundTicker = nil
+        end
+        return
+    end
+
+    -- Only one sound plays at a time: if the previous sound is still
+    -- playing, leave the queue untouched and try again next tick.
+    local handle = killSoundHandle
+    if handle and C_Sound.IsPlaying(handle) then
+        return
+    end
+
+    local sound = table.remove(killSoundQueue, 1)
+    local path = format(UNREAL_SOUND_PATH, sound)
+
+    killSoundHandle = PlaySoundFile(path)
+end
+
+
+function KwakTools:ClearKillSoundQueue()
+    while #killSoundQueue > 0 do
+        table.remove(killSoundQueue)
+    end
+end
+
+
+function KwakTools:ClearKillStreak()
+    killStreak = 0
+    killStreakTimer = nil
+    killStreakLastSound = nil
+end
+
+
+function KwakTools:ClearKillCombo()
+    killCombo = 0
+    killComboTimer = nil
+    killComboLastSound = nil
 end
 
 

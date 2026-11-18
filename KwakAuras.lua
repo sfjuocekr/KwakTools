@@ -1,4 +1,4 @@
-local KwakTools = KwakTools
+KwakTools = LibStub("AceAddon-3.0"):GetAddon("KwakTools")
 
 local SPIRIT_TAP_COOLDOWN_ID = 199997
 local SPIRIT_TAP_CHECK_INTERVAL = 0.1
@@ -75,7 +75,9 @@ function KwakTools:HandleSpiritTap(_active)
     --self:Print("SPIRIT TAP ACTIVE")
 
     if self.db.profile.spiritTapEmote then
-        local emotes = { "cheer", "train", "charge", "attacktarget", "openfire" }
-        DoEmote(emotes[math.random(#emotes)], "none")
+        local emotes = { "cheer", "train", "charge", "attackmytarget", "openfire" }
+        local emote = emotes[math.random(#emotes)]
+        self:Print(emote)
+        DoEmote(emote, "none")
     end
 end

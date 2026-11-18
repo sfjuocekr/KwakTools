@@ -1,4 +1,4 @@
-local KwakTools = KwakTools
+KwakTools = LibStub("AceAddon-3.0"):GetAddon("KwakTools")
 
 local options = {
     type = "group",
@@ -38,6 +38,20 @@ local options = {
                         KwakTools:SetManaLowEmoteEnabled(value)
                     end,
                 },
+                killStreak = {
+                    type = "toggle",
+                    name = "Kill Streak",
+                    desc = "Play the Unreal announcer sound for kill streaks (resets after 60 seconds).",
+                    order = 1,
+
+                    get = function()
+                        return KwakTools:IsKillStreakEnabled()
+                    end,
+
+                    set = function(_, value)
+                        KwakTools:SetKillStreak(value)
+                    end,
+                },
                 levelUp = {
                     type = "toggle",
                     name = "Level Up Screenshot",
@@ -74,6 +88,16 @@ end
 
 function KwakTools:SetManaLowEmoteEnabled(_value)
     self.db.profile.manaLowEmote = _value
+end
+
+
+function KwakTools:IsKillStreakEnabled()
+    return self.db.profile.killStreakSound
+end
+
+
+function KwakTools:SetKillStreak(_value)
+    self.db.profile.killStreakSound = _value
 end
 
 
